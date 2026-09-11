@@ -1,0 +1,73 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Plus Jakarta Sans', 'Noto Sans Devanagari', 'Noto Sans Gujarati', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  }
+}
+
+/* ==========================================================================
+   STAGE 4A.2 & 4B: HIGH-RESOLUTION PRINT & PDF STYLESHEET
+   ========================================================================== */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm 12mm;
+  }
+
+  /* Reset body and root backgrounds for pristine ink-friendly print */
+  html,
+  body {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    font-size: 11pt !important;
+    line-height: 1.35 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Hide screen-only interactive controls, navbar, footers */
+  header,
+  footer,
+  nav,
+  .screen-plan-view,
+  .screen-grocery-view,
+  #language-selector,
+  button,
+  .no-print {
+    display: none !important;
+  }
+
+  /* Display dedicated print container full-width */
+  #diet-plan-print-view,
+  #grocery-print-view,
+  .print-plan-container {
+    display: block !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+
+  /* Page break rules to prevent awkward breaks across cards or headers */
+  .avoid-break {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .day-print-card {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    margin-bottom: 14pt !important;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    break-after: avoid !important;
+    page-break-after: avoid !important;
+  }
+
+  /* Ensure clean borders and text contrast in print */
+  .border {
+    border-color: #cbd5e1 !important;
+  }
+}

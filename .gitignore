@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+*/node_modules/
+**/node_modules/
+
+# Environment Variables & Secrets
+.env
+.env.*
+!.env.example
+*.env
+backend/.env
+frontend/.env
+*.local
+
+# Build Outputs
+dist/
+dist-ssr/
+build/
+**/dist/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editor & OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Temporary test artifacts (optional, keeping clean)
+Test_PDF/temp_print_view.html
