@@ -26,6 +26,7 @@ pool.on('error', (err) => {
 let customerAutoId = 101;
 let dietPlanAutoId = 201;
 let noteAutoId = 301;
+let workoutPlanAutoId = 401;
 
 const mockCustomers = [
   {
@@ -112,39 +113,24 @@ const mockDietPlans = [
     plan_data: {
       days: [
         {
-          day: 'Monday (Day 1)',
+          day: 1,
+          day_name: 'Monday (Day 1)',
           meals: [
             {
               name: 'Breakfast',
-              items: '4 Egg whites scrambled with spinach + 2 slices whole wheat toast + 1 banana',
+              foods: [{ name: '4 Egg whites scrambled with spinach + 2 slices whole wheat toast + 1 banana', quantity: '1 plate' }],
               calories: 480,
-              protein: 32,
-              carbs: 60,
-              fat: 10
+              protein_g: 32,
+              carbs_g: 60,
+              fat_g: 10
             },
             {
               name: 'Lunch',
-              items: 'Grilled chicken breast (200g) + 1.5 cups brown rice + steamed broccoli',
+              foods: [{ name: 'Grilled chicken breast (200g) + 1.5 cups brown rice + steamed broccoli', quantity: '1 bowl' }],
               calories: 750,
-              protein: 55,
-              carbs: 85,
-              fat: 12
-            },
-            {
-              name: 'Snack',
-              items: 'Whey protein shake + 30g almonds + 1 apple',
-              calories: 380,
-              protein: 30,
-              carbs: 35,
-              fat: 14
-            },
-            {
-              name: 'Dinner',
-              items: 'Grilled salmon or chicken (180g) + baked sweet potato + mixed green salad',
-              calories: 650,
-              protein: 45,
-              carbs: 65,
-              fat: 16
+              protein_g: 55,
+              carbs_g: 85,
+              fat_g: 12
             }
           ]
         }
@@ -165,45 +151,216 @@ const mockDietPlans = [
     plan_data: {
       days: [
         {
-          day: 'सोमवार (दिन 1)',
+          day: 1,
+          day_name: 'सोमवार (दिन 1)',
           meals: [
             {
               name: 'नाश्ता (Breakfast)',
-              items: 'मूंग दाल चीला (2) + हरी चटनी + 1 कप स्किम्ड दूध',
+              foods: [{ name: 'मूंग दाल चीला (2) + हरी चटनी + 1 कप स्किम्ड दूध', quantity: '1 प्लेट' }],
               calories: 320,
-              protein: 20,
-              carbs: 40,
-              fat: 6
-            },
-            {
-              name: 'दोपहर का भोजन (Lunch)',
-              items: 'पनीर भुर्जी (100 ग्राम) + 2 मल्टीग्रेन रोटी + 1 कटोरी दाल + खीरा सलाद',
-              calories: 460,
-              protein: 30,
-              carbs: 50,
-              fat: 12
-            },
-            {
-              name: 'शाम का नाश्ता (Snack)',
-              items: 'भुने हुए चने + 1 कप ग्रीन टी',
-              calories: 150,
-              protein: 8,
-              carbs: 22,
-              fat: 3
-            },
-            {
-              name: 'रात का खाना (Dinner)',
-              items: 'मिक्स वेज सूप + उबले अंकुरित मूंग का कटोरा + 1 रोटी',
-              calories: 360,
-              protein: 22,
-              carbs: 45,
-              fat: 8
+              protein_g: 20,
+              carbs_g: 40,
+              fat_g: 6
             }
           ]
         }
       ]
     },
     created_at: new Date(Date.now() - 18 * 3600 * 1000).toISOString()
+  }
+];
+
+const mockWorkoutPlans = [
+  {
+    id: 1,
+    customer_id: 1,
+    fitness_goal: 'Muscle Gain',
+    experience_level: 'Intermediate',
+    workout_location: 'Gym',
+    equipment: 'Full Gym Barbell & Dumbbells',
+    days_per_week: 5,
+    duration_mins: 60,
+    injuries: 'None',
+    preferred_exercises: 'Bench Press, Deadlift, Pull-ups',
+    language: 'en',
+    plan_data: {
+      summary: {
+        fitness_goal: 'Muscle Gain',
+        experience_level: 'Intermediate',
+        days_per_week: 5,
+        duration_mins: 60,
+        focus: 'Hypertrophy & Strength'
+      },
+      days: [
+        {
+          day: 1,
+          day_name: 'Monday (Day 1)',
+          focus: 'Chest & Triceps (Push)',
+          is_rest_day: false,
+          warmup: '5-10 mins dynamic chest openers, arm circles & light push-ups',
+          cooldown: '5 mins chest doorway stretch & triceps overhead stretch',
+          exercises: [
+            {
+              name: 'Barbell Bench Press',
+              sets: 4,
+              reps: '8-10',
+              rest: '90 sec',
+              instructions: 'Keep shoulder blades retracted, lower bar with control to mid-chest, drive up explosively.'
+            },
+            {
+              name: 'Incline Dumbbell Press',
+              sets: 3,
+              reps: '10-12',
+              rest: '60 sec',
+              instructions: 'Set bench to 30 degrees, press dumbbells keeping elbows tucked at 45 degrees.'
+            },
+            {
+              name: 'Cable Chest Flyes',
+              sets: 3,
+              reps: '12-15',
+              rest: '60 sec',
+              instructions: 'Maintain slight elbow bend, squeeze pecs hard at peak contraction.'
+            },
+            {
+              name: 'Triceps Rope Pushdowns',
+              sets: 3,
+              reps: '12-15',
+              rest: '60 sec',
+              instructions: 'Pin elbows to your ribs and fully spread the rope at the bottom.'
+            }
+          ]
+        },
+        {
+          day: 2,
+          day_name: 'Tuesday (Day 2)',
+          focus: 'Back & Biceps (Pull)',
+          is_rest_day: false,
+          warmup: '5-10 mins lat pulldowns with light band & cat-cow stretches',
+          cooldown: '5 mins hanging lat stretch & bicep wall stretch',
+          exercises: [
+            {
+              name: 'Barbell Bent-Over Rows',
+              sets: 4,
+              reps: '8-10',
+              rest: '90 sec',
+              instructions: 'Hinge at hips with flat back, pull barbell to lower ribcage.'
+            },
+            {
+              name: 'Lat Pulldowns',
+              sets: 3,
+              reps: '10-12',
+              rest: '60 sec',
+              instructions: 'Pull handle down to upper chest, drive elbows downwards.'
+            },
+            {
+              name: 'Dumbbell Bicep Curls',
+              sets: 3,
+              reps: '10-12',
+              rest: '60 sec',
+              instructions: 'Supinate wrists as you curl, avoid swinging torso.'
+            }
+          ]
+        },
+        {
+          day: 3,
+          day_name: 'Wednesday (Day 3)',
+          focus: 'Rest & Active Recovery',
+          is_rest_day: true,
+          warmup: 'Light 15-20 min brisk walk',
+          cooldown: 'Full body static stretching & hydration',
+          exercises: []
+        },
+        {
+          day: 4,
+          day_name: 'Thursday (Day 4)',
+          focus: 'Legs & Core',
+          is_rest_day: false,
+          warmup: 'Bodyweight squats, leg swings & hip openers',
+          cooldown: 'Hamstring & quad stretching',
+          exercises: [
+            {
+              name: 'Barbell Back Squats',
+              sets: 4,
+              reps: '8-10',
+              rest: '90-120 sec',
+              instructions: 'Descend to parallel, keep knees tracking toes and chest proud.'
+            },
+            {
+              name: 'Romanian Deadlifts',
+              sets: 3,
+              reps: '10-12',
+              rest: '90 sec',
+              instructions: 'Push hips back feeling deep hamstring stretch, keep spine neutral.'
+            },
+            {
+              name: 'Plank Holds',
+              sets: 3,
+              reps: '45-60 sec',
+              rest: '45 sec',
+              instructions: 'Brace core tightly and maintain straight line from head to heels.'
+            }
+          ]
+        },
+        {
+          day: 5,
+          day_name: 'Friday (Day 5)',
+          focus: 'Shoulders & Arms',
+          is_rest_day: false,
+          warmup: 'Arm swings & light lateral raises',
+          cooldown: 'Cross-body shoulder stretch',
+          exercises: [
+            {
+              name: 'Overhead Dumbbell Shoulder Press',
+              sets: 4,
+              reps: '8-10',
+              rest: '90 sec',
+              instructions: 'Press dumbbells overhead without hyperextending lower back.'
+            },
+            {
+              name: 'Dumbbell Lateral Raises',
+              sets: 3,
+              reps: '12-15',
+              rest: '60 sec',
+              instructions: 'Lead with elbows, raise weights to shoulder height with control.'
+            }
+          ]
+        },
+        {
+          day: 6,
+          day_name: 'Saturday (Day 6)',
+          focus: 'Full Body HIIT / Mobility',
+          is_rest_day: false,
+          warmup: 'Dynamic joint mobility',
+          cooldown: 'Deep breathing & foam rolling',
+          exercises: [
+            {
+              name: 'Kettlebell Swings',
+              sets: 3,
+              reps: '15',
+              rest: '60 sec',
+              instructions: 'Snap hips forward powerfully to swing bell to chest height.'
+            },
+            {
+              name: 'Push-ups to Pike',
+              sets: 3,
+              reps: '12',
+              rest: '60 sec',
+              instructions: 'Perform standard push-up then transition into downward dog.'
+            }
+          ]
+        },
+        {
+          day: 7,
+          day_name: 'Sunday (Day 7)',
+          focus: 'Rest & Full Recovery',
+          is_rest_day: true,
+          warmup: 'Rest and recharge',
+          cooldown: 'Adequate sleep and protein hydration',
+          exercises: []
+        }
+      ]
+    },
+    created_at: new Date(Date.now() - 2 * 3600 * 1000).toISOString()
   }
 ];
 
@@ -275,9 +432,14 @@ function executeMemoryQuery(text, params = []) {
     };
   }
 
-  // 2. TOTAL PLANS: SELECT COUNT(*) FROM diet_plans
+  // 2. TOTAL DIET PLANS: SELECT COUNT(*) FROM diet_plans
   if (queryStr.includes('COUNT(*)') && queryStr.includes('FROM diet_plans') && !queryStr.includes('customer_id')) {
     return { rows: [{ total_plans: mockDietPlans.length }] };
+  }
+
+  // 2B. TOTAL WORKOUT PLANS: SELECT COUNT(*) FROM workout_plans
+  if (queryStr.includes('COUNT(*)') && queryStr.includes('FROM workout_plans') && !queryStr.includes('customer_id')) {
+    return { rows: [{ total_workout_plans: mockWorkoutPlans.length }] };
   }
 
   // 3. CUSTOMER COUNT: SELECT COUNT(*) FROM customers c
@@ -302,7 +464,7 @@ function executeMemoryQuery(text, params = []) {
   }
 
   // 4. CUSTOMERS LIST: SELECT c.*, COUNT(DISTINCT dp.id)... FROM customers c
-  if (queryStr.includes('FROM customers c') && (queryStr.includes('plan_count') || queryStr.includes('note_count'))) {
+  if (queryStr.includes('FROM customers c') && (queryStr.includes('plan_count') || queryStr.includes('note_count') || queryStr.includes('workout_plan_count'))) {
     let list = [...mockCustomers];
 
     // Filter using query params
@@ -323,9 +485,10 @@ function executeMemoryQuery(text, params = []) {
 
     list.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-    // Calculate plan_count and note_count for each
+    // Calculate plan_count, workout_plan_count, and note_count for each
     const rows = list.map((c) => {
       const pCount = mockDietPlans.filter((p) => p.customer_id === c.id).length;
+      const wpCount = mockWorkoutPlans.filter((wp) => wp.customer_id === c.id).length;
       const nCount = mockTrainerNotes.filter((n) => n.customer_id === c.id).length;
       const pList = mockDietPlans.filter((p) => p.customer_id === c.id);
       const latestP = pList.length > 0 ? pList[0].created_at : null;
@@ -333,6 +496,8 @@ function executeMemoryQuery(text, params = []) {
       return {
         ...c,
         plan_count: pCount,
+        diet_plan_count: pCount,
+        workout_plan_count: wpCount,
         note_count: nCount,
         latest_plan_created_at: latestP
       };
@@ -358,6 +523,15 @@ function executeMemoryQuery(text, params = []) {
     const custId = parseInt(params[0], 10);
     const plans = mockDietPlans
       .filter((p) => p.customer_id === custId)
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    return { rows: plans };
+  }
+
+  // 6B. CUSTOMER WORKOUT PLANS: SELECT * FROM workout_plans WHERE customer_id = $1
+  if (queryStr.includes('FROM workout_plans WHERE customer_id = $1')) {
+    const custId = parseInt(params[0], 10);
+    const plans = mockWorkoutPlans
+      .filter((wp) => wp.customer_id === custId)
       .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
     return { rows: plans };
   }
@@ -408,10 +582,10 @@ function executeMemoryQuery(text, params = []) {
       height_cm: parseFloat(height),
       weight_kg: parseFloat(weight),
       goal,
-      activity_level: act,
-      diet_preference: diet,
-      favorite_foods: fav,
-      allergies: allg,
+      activity_level: act || 'Moderate',
+      diet_preference: diet || 'Standard',
+      favorite_foods: fav || 'None',
+      allergies: allg || 'None',
       phone,
       email,
       language: lang || 'en',
@@ -441,6 +615,28 @@ function executeMemoryQuery(text, params = []) {
     return { rows: [newPlan] };
   }
 
+  // 11B. INSERT WORKOUT PLAN: INSERT INTO workout_plans
+  if (queryStr.includes('INSERT INTO workout_plans')) {
+    const [cId, fGoal, expLvl, wLoc, equip, daysWk, durMins, inj, prefEx, lang, pData] = params;
+    const newWorkoutPlan = {
+      id: workoutPlanAutoId++,
+      customer_id: parseInt(cId, 10),
+      fitness_goal: fGoal,
+      experience_level: expLvl,
+      workout_location: wLoc,
+      equipment: equip,
+      days_per_week: parseInt(daysWk, 10),
+      duration_mins: parseInt(durMins, 10),
+      injuries: inj,
+      preferred_exercises: prefEx,
+      language: lang || 'en',
+      plan_data: typeof pData === 'string' ? JSON.parse(pData) : pData,
+      created_at: new Date().toISOString()
+    };
+    mockWorkoutPlans.unshift(newWorkoutPlan);
+    return { rows: [newWorkoutPlan] };
+  }
+
   // 12. ALL DIET PLANS: SELECT dp.*, c.name FROM diet_plans
   if (queryStr.includes('FROM diet_plans dp') && queryStr.includes('JOIN customers c')) {
     const rows = mockDietPlans.map((dp) => {
@@ -450,6 +646,20 @@ function executeMemoryQuery(text, params = []) {
         name: cust.name || 'Member',
         goal: cust.goal || 'Fitness',
         diet_preference: cust.diet_preference || 'Standard',
+        email: cust.email || ''
+      };
+    });
+    return { rows };
+  }
+
+  // 12B. ALL WORKOUT PLANS: SELECT wp.*, c.name FROM workout_plans
+  if (queryStr.includes('FROM workout_plans wp') && queryStr.includes('JOIN customers c')) {
+    const rows = mockWorkoutPlans.map((wp) => {
+      const cust = mockCustomers.find((c) => c.id === wp.customer_id) || {};
+      return {
+        ...wp,
+        name: cust.name || 'Member',
+        goal: cust.goal || 'Fitness',
         email: cust.email || ''
       };
     });
@@ -501,7 +711,7 @@ const testConnection = async () => {
 };
 
 /**
- * Initialize Database Schema (creates `customers`, `diet_plans`, and `trainer_notes` tables)
+ * Initialize Database Schema (creates `customers`, `diet_plans`, `workout_plans`, and `trainer_notes` tables)
  */
 const initDb = async () => {
   const createCustomersTable = `
@@ -540,6 +750,24 @@ const initDb = async () => {
     );
   `;
 
+  const createWorkoutPlansTable = `
+    CREATE TABLE IF NOT EXISTS workout_plans (
+      id SERIAL PRIMARY KEY,
+      customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+      fitness_goal VARCHAR(100),
+      experience_level VARCHAR(50),
+      workout_location VARCHAR(50),
+      equipment TEXT,
+      days_per_week INTEGER,
+      duration_mins INTEGER,
+      injuries TEXT,
+      preferred_exercises TEXT,
+      language VARCHAR(2) DEFAULT 'en',
+      plan_data JSONB,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    );
+  `;
+
   const createTrainerNotesTable = `
     CREATE TABLE IF NOT EXISTS trainer_notes (
       id SERIAL PRIMARY KEY,
@@ -552,15 +780,17 @@ const initDb = async () => {
   const alterTablesForStage3C = `
     ALTER TABLE customers ADD COLUMN IF NOT EXISTS language VARCHAR(2) DEFAULT 'en';
     ALTER TABLE diet_plans ADD COLUMN IF NOT EXISTS language VARCHAR(2) DEFAULT 'en';
+    ALTER TABLE workout_plans ADD COLUMN IF NOT EXISTS language VARCHAR(2) DEFAULT 'en';
   `;
 
   try {
     await pool.query(createCustomersTable);
     await pool.query(createDietPlansTable);
+    await pool.query(createWorkoutPlansTable);
     await pool.query(alterTablesForStage3C);
     await pool.query(createTrainerNotesTable);
     isPostgresAvailable = true;
-    console.log('✓ PostgreSQL tables ("customers", "diet_plans", "trainer_notes") verified/updated.');
+    console.log('✓ PostgreSQL tables ("customers", "diet_plans", "workout_plans", "trainer_notes") verified/updated.');
   } catch (err) {
     isPostgresAvailable = false;
     console.log('ℹ In-memory storage ready with sample gym member records.');

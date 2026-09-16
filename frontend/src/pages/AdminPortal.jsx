@@ -6,6 +6,7 @@ import AdminFilters from '../components/Admin/AdminFilters';
 import AdminLeadsTable from '../components/Admin/AdminLeadsTable';
 import MemberDetailModal from '../components/Admin/MemberDetailModal';
 import DietPlan from './DietPlan';
+import WorkoutPlan from './WorkoutPlan';
 import Button from '../components/Button';
 
 const BACKEND_URL = 'http://localhost:5000';
@@ -42,11 +43,13 @@ export default function AdminPortal({ onNavigateHome }) {
   // Selected customer for modal
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [customerPlans, setCustomerPlans] = useState([]);
+  const [customerWorkoutPlans, setCustomerWorkoutPlans] = useState([]);
   const [customerNotes, setCustomerNotes] = useState([]);
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
 
-  // Full Diet Plan preview mode
+  // Full Plan preview modes (Diet & Workout)
   const [viewingPlanData, setViewingPlanData] = useState(null);
+  const [viewingWorkoutPlanData, setViewingWorkoutPlanData] = useState(null);
 
   // Handle Unauthorized / Session Expiry
   const handleUnauthorized = useCallback(() => {
@@ -198,6 +201,7 @@ export default function AdminPortal({ onNavigateHome }) {
         if (data.success && data.customer) {
           setSelectedCustomer(data.customer);
           setCustomerPlans(data.customer.dietPlans || []);
+          setCustomerWorkoutPlans(data.customer.workoutPlans || []);
           setCustomerNotes(data.customer.trainerNotes || []);
         }
       }
@@ -233,6 +237,31 @@ export default function AdminPortal({ onNavigateHome }) {
         carbsG: planObj.carbsG || planObj.carbs_g,
         fatG: planObj.fatG || planObj.fat_g,
       },
+      plan: pData,
+    };
+  };
+
+  // Helper to construct WorkoutPlan data from customer + plan
+  const buildWorkoutPlanData = (planObj, custObj) => {
+    const pData = planObj.planData || planObj.plan_data || {};
+    return {
+      name: custObj.name,
+      age: custObj.age,
+      gender: custObj.gender,
+      height: custObj.height,
+      weight: custObj.weight,
+      fitnessGoal: planObj.fitnessGoal || planObj.fitness_goal || custObj.goal,
+      goal: planObj.fitnessGoal || planObj.fitness_goal || custObj.goal,
+      experienceLevel: planObj.experienceLevel || planObj.experience_level,
+      workoutLocation: planObj.workoutLocation || planObj.workout_location,
+      equipment: planObj.equipment,
+      daysPerWeek: planObj.daysPerWeek || planObj.days_per_week,
+      durationMins: planObj.durationMins || planObj.duration_mins,
+      injuries: planObj.injuries || custObj.injuries,
+      preferredExercises: planObj.preferredExercises || planObj.preferred_exercises,
+      phone: custObj.phone,
+      email: custObj.email,
+      planLanguage: planObj.language || custObj.language || 'en',
       plan: pData,
     };
   };
@@ -273,6 +302,14 @@ export default function AdminPortal({ onNavigateHome }) {
     const fullData = buildPlanData(planObj, custObj);
     setSelectedCustomer(null);
     setViewingPlanData(fullData);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Re-open saved workout plan from modal
+  const handleOpenWorkoutPlanFromModal = (planObj, custObj) => {
+    const fullData = buildWorkoutPlanData(planObj, custObj);
+    setSelectedCustomer(null);
+    setViewingWorkoutPlanData(fullData);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -345,6 +382,53 @@ export default function AdminPortal({ onNavigateHome }) {
             customerData={viewingPlanData}
             onReset={() => {
               setViewingPlanData(null);
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  // VIEW MODE: Saved Workout Plan Viewer
+  if (viewingWorkoutPlanData) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 py-6 px-4 sm:px-6">
+        <div className="max-w-4xl mx-auto space-y-6">
+          {/* Top Return Banner */}
+          <div className="p-4 rounded-2xl bg-slate-900 border border-emerald-500/30 shadow-lg flex flex-col sm:flex-row items-center justify-between gap-3 sticky top-4 z-40 backdrop-blur-md">
+            <div className="flex items-center gap-3 text-left">
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center justify-center font-bold text-lg shrink-0">
+                🏋️
+              </div>
+              <div>
+                <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider block">
+                  Staff Inspection Mode
+                </span>
+                <span className="text-sm sm:text-base font-extrabold text-white">
+                  {viewingWorkoutPlanData.name}&apos;s Saved 7-Day Workout Routine
+                </span>
+              </div>
+            </div>
+
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setViewingWorkoutPlanData(null);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              className="w-full sm:w-auto font-bold border-emerald-500/30 text-emerald-300 hover:bg-slate-800"
+            >
+              ← Back to Admin Portal
+            </Button>
+          </div>
+
+          {/* Render Full Workout Plan with 0 Gemini Calls */}
+          <WorkoutPlan
+            customerData={viewingWorkoutPlanData}
+            onReset={() => {
+              setViewingWorkoutPlanData(null);
               window.scrollTo({ top: 0, behavior: 'smooth' });
             }}
           />
@@ -460,10 +544,12 @@ export default function AdminPortal({ onNavigateHome }) {
           <MemberDetailModal
             customer={selectedCustomer}
             dietPlans={customerPlans}
+            workoutPlans={customerWorkoutPlans}
             notes={customerNotes}
             token={adminToken}
             onClose={() => setSelectedCustomer(null)}
             onOpenDietPlan={handleOpenPlanFromModal}
+            onOpenWorkoutPlan={handleOpenWorkoutPlanFromModal}
             onNoteAdded={handleNoteAdded}
             onNoteDeleted={handleNoteDeleted}
           />

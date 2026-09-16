@@ -505,7 +505,288 @@ Include all 7 days (Day 1 to Day 7) with creative variety across the week.
   throw new Error(`AI Meal Plan Generation failed validation after ${MAX_ATTEMPTS} attempts: ${lastValidationError}`);
 }
 
+/**
+ * Validates the generated AI workout routine structure, 7 days, exercises, rest days, and safety precautions.
+ * @param {object} plan - Parsed JSON workout plan
+ * @param {object} customer - Customer intake profile
+ * @param {object} workoutProfile - Workout parameters (goal, experience, location, equipment, daysPerWeek, durationMins, injuries)
+ * @returns {{ valid: boolean, error?: string }}
+ */
+function validateWorkoutPlan(plan, customer, workoutProfile = {}) {
+  if (!plan || typeof plan !== 'object') {
+    return { valid: false, error: 'AI response is not a valid JSON object.' };
+  }
+
+  // 1. Verify summary exists or initialize
+  if (!plan.summary || typeof plan.summary !== 'object') {
+    plan.summary = {};
+  }
+
+  // 2. Verify days array of exactly 7 days
+  if (!Array.isArray(plan.days) || plan.days.length !== 7) {
+    return { valid: false, error: `AI response must contain exactly 7 days, but got ${plan.days ? plan.days.length : 0}.` };
+  }
+
+  // 3. Verify each day structure and exercise formatting
+  let activeWorkoutDaysCount = 0;
+  let restDaysCount = 0;
+
+  for (let d = 0; d < plan.days.length; d++) {
+    const day = plan.days[d];
+    if (!day || typeof day !== 'object') {
+      return { valid: false, error: `Invalid day object at index ${d}.` };
+    }
+
+    if (!day.focus || typeof day.focus !== 'string') {
+      return { valid: false, error: `Day ${d + 1} is missing a workout focus string.` };
+    }
+
+    const isRest = Boolean(day.is_rest_day || day.isRestDay || day.focus.toLowerCase().includes('rest') || day.focus.toLowerCase().includes('recovery') || day.focus.toLowerCase().includes('विश्राम') || day.focus.toLowerCase().includes('આરામ'));
+    day.is_rest_day = isRest;
+    day.isRestDay = isRest;
+
+    if (isRest) {
+      restDaysCount++;
+      if (!Array.isArray(day.exercises)) {
+        day.exercises = [];
+      }
+    } else {
+      activeWorkoutDaysCount++;
+      if (!Array.isArray(day.exercises) || day.exercises.length === 0) {
+        return { valid: false, error: `Active workout Day ${d + 1} ("${day.focus}") must contain at least 1-2 structured exercises.` };
+      }
+
+      for (let e = 0; e < day.exercises.length; e++) {
+        const ex = day.exercises[e];
+        if (!ex || typeof ex !== 'object') {
+          return { valid: false, error: `Day ${d + 1}, Exercise ${e + 1} is invalid.` };
+        }
+        if (!ex.name || typeof ex.name !== 'string' || !ex.name.trim()) {
+          return { valid: false, error: `Day ${d + 1}, Exercise ${e + 1} is missing a name.` };
+        }
+        if (ex.sets === undefined || ex.sets === null || ex.sets === '') {
+          return { valid: false, error: `Day ${d + 1}, Exercise "${ex.name}" is missing sets.` };
+        }
+        if (!ex.reps && !ex.duration) {
+          return { valid: false, error: `Day ${d + 1}, Exercise "${ex.name}" must specify reps or duration.` };
+        }
+        if (!ex.rest || typeof ex.rest !== 'string') {
+          ex.rest = '60-90 sec';
+        }
+        if (!ex.instructions && !ex.cues) {
+          ex.cues = 'Maintain proper posture and controlled breathing throughout the movement.';
+        }
+      }
+    }
+  }
+
+  // 4. Physical Limitations / Injury Safety Check
+  const injuriesStr = ((workoutProfile && workoutProfile.injuries) || (customer && customer.injuries) || '').toLowerCase().trim();
+  if (injuriesStr && injuriesStr !== 'none' && injuriesStr !== 'none specified' && injuriesStr !== 'કોઈ નહીં' && injuriesStr !== 'कोई नहीं') {
+    // If injuries specified, ensure safety caution/notice is set or present
+    if (!plan.safety_caution && !plan.summary.safety_notice) {
+      plan.safety_caution = `Physical limitation noted: "${injuriesStr}". Exercises have been tailored to avoid aggravating this area. Please warm up thoroughly and consult a healthcare or physical therapy professional if you experience any pain.`;
+    }
+  }
+
+  return { valid: true };
+}
+
+/**
+ * Calls Google Gemini AI to generate a structured 7-day personalized workout schedule in the selected language.
+ * Implements bounded retries with validation feedback.
+ * @param {object} customer - Customer profile (name, age, gender, height, weight)
+ * @param {object} workoutProfile - Workout preferences (goal, experience, location, equipment, daysPerWeek, durationMins, injuries, preferredExercises)
+ * @param {string} [language='en'] - 'en' | 'hi' | 'gu'
+ * @returns {Promise<object>} Validated 7-day workout routine in the chosen language
+ */
+async function generateWorkoutPlan(customer, workoutProfile, language = 'en') {
+  const apiKey = process.env.GEMINI_API_KEY;
+
+  if (!apiKey || apiKey === 'your_gemini_api_key_here' || apiKey.trim() === '') {
+    throw new Error('GEMINI_API_KEY is not configured in backend/.env. Please provide a valid Gemini API key.');
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
+
+  // Define language-specific instructions
+  let languageInstruction = 'Generate all customer-facing exercise names, day names, focus titles, and execution cues in clear English.';
+  let languageHint = 'English';
+
+  if (language === 'hi') {
+    languageInstruction = `IMPORTANT LANGUAGE INSTRUCTION (HINDI / हिंदी):
+- You MUST generate ALL human-readable workout focus titles, day names, warmups, cooldowns, and form instructions in natural Hindi (हिंदी) using Devanagari script.
+- For exercise names, you can provide standard fitness names or Hindi transliterations (e.g. "बेंच प्रेस (Bench Press)", "डंबल स्क्वैट्स (Dumbbell Squats)", "पुश-अप्स (Push-ups)", "प्लैंक (Plank)").
+- Examples for day names: "सोमवार (दिन 1)", "मंगलवार (दिन 2)", "बुधवार (दिन 3)", "गुरुवार (दिन 4)", "शुक्रवार (दिन 5)", "शनिवार (दिन 6)", "रविवार (दिन 7)".
+- Examples for focus: "छाती और ट्राइसेप्स (Chest & Triceps)", "पीठ और बाइसेप्स (Back & Biceps)", "पैर और कोर (Legs & Core)", "सक्रिय विश्राम और स्ट्रेचिंग (Active Rest & Recovery)".
+- DO NOT translate JSON keys. JSON property names MUST stay in English!`;
+    languageHint = 'Natural Hindi in Devanagari script';
+  } else if (language === 'gu') {
+    languageInstruction = `IMPORTANT LANGUAGE INSTRUCTION (GUJARATI / ગુજરાતી):
+- You MUST generate ALL human-readable workout focus titles, day names, warmups, cooldowns, and form instructions in natural Gujarati (ગુજરાતી) using Gujarati script.
+- For exercise names, you can provide standard fitness names or Gujarati transliterations (e.g. "બેન્ચ પ્રેસ (Bench Press)", "ડમ્બબેલ સ્ક્વોટ્સ (Dumbbell Squats)", "પુશ-અપ્સ (Push-ups)", "પ્લેન્ક (Plank)").
+- Examples for day names: "સોમવાર (દિવસ 1)", "મંગળવાર (દિવસ 2)", "બુધવાર (દિવસ 3)", "ગુરુવાર (દિવસ 4)", "શુક્રવાર (દિવસ 5)", "શનિવાર (દિવસ 6)", "રવિવાર (દિવસ 7)".
+- Examples for focus: "છાતી અને ટ્રાઇસેપ્સ (Chest & Triceps)", "પીઠ અને બાઇસેપ્સ (Back & Biceps)", "પગ અને કોર (Legs & Core)", "સક્રિય આરામ અને સ્ટ્રેચિંગ (Active Rest & Recovery)".
+- DO NOT translate JSON keys. JSON property names MUST stay in English!`;
+    languageHint = 'Natural Gujarati in Gujarati script';
+  }
+
+  const daysPerWeek = parseInt(workoutProfile.daysPerWeek, 10) || 4;
+  const durationMins = parseInt(workoutProfile.durationMins, 10) || 45;
+  const targetRestDays = 7 - daysPerWeek;
+
+  const basePrompt = `
+You are an expert certified gym strength and conditioning coach creating a personalized, practical 7-day workout routine for a gym member.
+
+${languageInstruction}
+
+### CRITICAL SCHEMA & LANGUAGE RULES
+1. ALL JSON keys/property names MUST REMAIN IN ENGLISH (e.g. "summary", "days", "day", "day_name", "focus", "is_rest_day", "warmup", "cooldown", "exercises", "name", "sets", "reps", "rest", "instructions", "safety_caution").
+2. String values presented to the member ("focus", "warmup", "cooldown", "exercises[].instructions", "day_name") must be written in the specified language (${languageHint}).
+3. Exactly 7 days must be generated (Day 1 through Day 7).
+
+### MEMBER PROFILE & PREFERENCES
+- Name: ${customer.name || 'Member'}
+- Age: ${customer.age} | Gender: ${customer.gender}
+- Height: ${customer.height} cm | Weight: ${customer.weight} kg
+- Primary Fitness Goal: ${workoutProfile.fitnessGoal || customer.goal || 'General Fitness'}
+- Experience Level: ${workoutProfile.experienceLevel || 'Beginner'}
+- Workout Location: ${workoutProfile.workoutLocation || 'Gym'}
+- Available Equipment: ${workoutProfile.equipment || 'Full Gym Equipment'}
+- Training Frequency: ${daysPerWeek} active workout days per week (and exactly ${targetRestDays} scheduled rest/recovery days)
+- Session Duration: ~${durationMins} minutes per session
+- Preferred Exercises to incorporate: ${workoutProfile.preferredExercises || 'Standard compound and isolation movements'}
+- Physical Limitations / Injuries: ${workoutProfile.injuries || 'None'}
+
+### SAFETY & INJURY PROTOCOL (CRITICAL)
+- The workout plan is general fitness coaching, NOT medical treatment.
+- If the user reported physical limitations/injuries (e.g. "${workoutProfile.injuries || 'None'}"):
+  * DO NOT attempt to diagnose their condition.
+  * DO NOT program exercises that directly stress or compromise that specific joint/injury.
+  * Substitute safe, joint-friendly variations (e.g. if lower back issues, favor chest-supported rows over heavy bent-over barbell rows; if knee issues, favor box squats or glute bridges over deep high-impact jumping).
+  * Include clear safety guidance and remind the member to consult a qualified physiotherapist or physician before starting.
+
+### SCHEDULE STRUCTURE (EXACTLY 7 DAYS)
+- Total Active Training Days: ${daysPerWeek} days
+- Total Rest / Active Recovery Days: ${targetRestDays} days (set "is_rest_day": true and "exercises": [])
+- Distribute active workout days and rest days logically across the 7 days for optimal muscle recovery.
+- For active training days:
+  * Include 4 to 6 focused exercises suited for ${durationMins} minutes.
+  * For each exercise: specify name, sets (e.g. 3 or 4), reps (e.g. "8-12", "12-15", or duration like "45 sec"), rest period (e.g. "60 sec", "90 sec"), and 1-2 actionable form cues/instructions.
+
+### OUTPUT REQUIREMENTS
+You must return ONLY a valid JSON object matching this exact schema:
+
+{
+  "summary": {
+    "fitness_goal": "${workoutProfile.fitnessGoal || 'General Fitness'}",
+    "experience_level": "${workoutProfile.experienceLevel || 'Beginner'}",
+    "workout_location": "${workoutProfile.workoutLocation || 'Gym'}",
+    "days_per_week": ${daysPerWeek},
+    "duration_mins": ${durationMins},
+    "focus_overview": "Short 1-sentence overview of the split in ${languageHint}"
+  },
+  "safety_caution": "Safety guidance regarding form and medical consultation in ${languageHint}",
+  "days": [
+    {
+      "day": 1,
+      "day_name": "${language === 'hi' ? 'सोमवार (दिन 1)' : language === 'gu' ? 'સોમવાર (દિવસ 1)' : 'Monday (Day 1)'}",
+      "focus": "Workout focus title (or Rest / Active Recovery)",
+      "is_rest_day": false,
+      "warmup": "5-10 min dynamic warmup routine in ${languageHint}",
+      "cooldown": "5 min cooldown and stretching routine in ${languageHint}",
+      "exercises": [
+        {
+          "name": "Exercise Name",
+          "sets": 3,
+          "reps": "10-12",
+          "rest": "60 sec",
+          "instructions": "Key form and execution tip in ${languageHint}"
+        }
+      ]
+    }
+  ]
+}
+
+Include all 7 days (Day 1 through Day 7) with creative, progressive exercise selection and intelligent rest days matching the requested ${daysPerWeek} days/week frequency.
+`;
+
+  const modelsToTry = [
+    'gemini-3.6-flash',
+    'gemini-3.7-flash',
+    'gemini-3.5-flash',
+  ];
+
+  const MAX_ATTEMPTS = 3;
+  let lastValidationError = null;
+  let lastApiError = null;
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    let currentPrompt = basePrompt;
+    if (lastValidationError) {
+      currentPrompt += `\n\n### CRITICAL CORRECTION REQUIRED (Attempt ${attempt}/${MAX_ATTEMPTS}):\nYour previous output failed validation with error: "${lastValidationError}".\nYou MUST correct this error immediately. Ensure exactly 7 days, valid exercises with sets/reps/rest/instructions, and ${targetRestDays} scheduled rest/recovery days.`;
+    }
+
+    let responseText = null;
+
+    for (const model of modelsToTry) {
+      for (let modelAttempt = 1; modelAttempt <= 2; modelAttempt++) {
+        try {
+          const response = await ai.models.generateContent({
+            model,
+            contents: currentPrompt,
+            config: {
+              responseMimeType: 'application/json',
+              temperature: 0.25 + (attempt * 0.05)
+            }
+          });
+          responseText = response.text ? response.text.trim() : '';
+          if (responseText) {
+            break;
+          }
+        } catch (err) {
+          lastApiError = err;
+          console.warn(`Model ${model} workout attempt ${modelAttempt} notice (${err.message}).`);
+          if (modelAttempt < 2 && err.message?.includes('503')) {
+            await new Promise((r) => setTimeout(r, 1000));
+          }
+        }
+      }
+      if (responseText) {
+        break;
+      }
+    }
+
+    if (!responseText) {
+      throw lastApiError || new Error('All Gemini model candidates failed to respond.');
+    }
+
+    let parsedPlan;
+    try {
+      parsedPlan = JSON.parse(responseText);
+    } catch (err) {
+      console.error('Gemini Workout JSON Parse Error on attempt', attempt, ':', err.message);
+      lastValidationError = 'Failed to parse Gemini response as JSON.';
+      continue;
+    }
+
+    // Validate the AI workout output
+    const validation = validateWorkoutPlan(parsedPlan, customer, workoutProfile);
+    if (validation.valid) {
+      return parsedPlan;
+    }
+
+    lastValidationError = validation.error;
+    console.warn(`⚠️ Workout generation attempt ${attempt}/${MAX_ATTEMPTS} rejected: ${validation.error}. Retrying with feedback...`);
+  }
+
+  throw new Error(`AI Workout Plan Generation failed validation after ${MAX_ATTEMPTS} attempts: ${lastValidationError}`);
+}
+
 module.exports = {
   generateDietPlan,
-  validateDietPlan
+  validateDietPlan,
+  generateWorkoutPlan,
+  validateWorkoutPlan
 };
+

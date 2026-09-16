@@ -6,15 +6,17 @@ import Button from '../Button';
 export default function MemberDetailModal({
   customer,
   dietPlans = [],
+  workoutPlans = [],
   notes = [],
   token,
   onClose,
   onOpenDietPlan,
+  onOpenWorkoutPlan,
   onNoteAdded,
   onNoteDeleted,
 }) {
   const { t } = useLanguage();
-  const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'plans' | 'notes'
+  const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'plans' | 'workoutPlans' | 'notes'
 
   if (!customer) return null;
 
@@ -63,7 +65,7 @@ export default function MemberDetailModal({
         </div>
 
         {/* Tab Navigation */}
-        <div className="px-5 sm:px-6 pt-3 border-b border-slate-800 flex gap-2 text-xs font-bold">
+        <div className="px-5 sm:px-6 pt-3 border-b border-slate-800 flex flex-wrap gap-2 text-xs font-bold">
           <button
             type="button"
             onClick={() => setActiveTab('overview')}
@@ -87,6 +89,20 @@ export default function MemberDetailModal({
             <span>{t('admin.tabDietPlans')}</span>
             <span className="px-1.5 py-0.2 rounded-full bg-slate-800 text-[10px] text-slate-300">
               {dietPlans.length}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('workoutPlans')}
+            className={`pb-2.5 px-3 border-b-2 transition-colors cursor-pointer flex items-center gap-1.5 ${
+              activeTab === 'workoutPlans'
+                ? 'border-emerald-400 text-emerald-400'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <span>{t('admin.tabWorkoutPlans')}</span>
+            <span className="px-1.5 py-0.2 rounded-full bg-slate-800 text-[10px] text-slate-300">
+              {workoutPlans.length}
             </span>
           </button>
           <button
@@ -265,7 +281,90 @@ export default function MemberDetailModal({
             </div>
           )}
 
-          {/* TAB 3: TRAINER COACHING NOTES */}
+          {/* TAB 3: SAVED WORKOUT PLANS HISTORY */}
+          {activeTab === 'workoutPlans' && (
+            <div className="space-y-3">
+              {workoutPlans.length > 0 ? (
+                workoutPlans.map((wp, idx) => {
+                  const pDate = new Date(wp.createdAt || wp.created_at).toLocaleString();
+                  const hasSchedule = Boolean(wp.planData && wp.planData.days);
+
+                  return (
+                    <div
+                      key={wp.id || idx}
+                      className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-3"
+                    >
+                      <div className="flex items-center justify-between gap-2 border-b border-slate-800/80 pb-2.5">
+                        <div>
+                          <h4 className="text-sm font-bold text-white">
+                            {t('admin.workoutPlanItemTitle') || '7-Day Workout Plan'} #{workoutPlans.length - idx}
+                          </h4>
+                          <p className="text-[11px] text-slate-400 mt-0.5">{pDate}</p>
+                        </div>
+                        <span className="px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 font-extrabold text-xs">
+                          {wp.fitnessGoal || wp.fitness_goal || customer.goal}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                        <div className="p-2 rounded-lg bg-slate-900 border border-slate-800">
+                          <span className="text-[10px] text-slate-400 block">{t('workoutPlan.experience') || 'Experience'}</span>
+                          <span className="font-semibold text-slate-200 capitalize">{wp.experienceLevel || wp.experience_level || 'N/A'}</span>
+                        </div>
+                        <div className="p-2 rounded-lg bg-slate-900 border border-slate-800">
+                          <span className="text-[10px] text-slate-400 block">{t('workoutPlan.location') || 'Location'}</span>
+                          <span className="font-semibold text-slate-200 capitalize">{wp.workoutLocation || wp.workout_location || 'Gym'}</span>
+                        </div>
+                        <div className="p-2 rounded-lg bg-slate-900 border border-slate-800">
+                          <span className="text-[10px] text-slate-400 block">{t('workoutPlan.frequency') || 'Frequency'}</span>
+                          <span className="font-semibold text-emerald-400">{wp.daysPerWeek || wp.days_per_week || 4} days/wk</span>
+                        </div>
+                        <div className="p-2 rounded-lg bg-slate-900 border border-slate-800">
+                          <span className="text-[10px] text-slate-400 block">{t('workoutPlan.duration') || 'Duration'}</span>
+                          <span className="font-semibold text-amber-400">{wp.durationMins || wp.duration_mins || 45} mins</span>
+                        </div>
+                      </div>
+
+                      {(wp.equipment || wp.injuries) && (
+                        <div className="text-[11px] text-slate-400 space-y-1 bg-slate-900/60 p-2.5 rounded-xl border border-slate-800/80">
+                          {wp.equipment && (
+                            <div>
+                              <strong className="text-slate-300">Equipment:</strong> {wp.equipment}
+                            </div>
+                          )}
+                          {wp.injuries && (
+                            <div>
+                              <strong className="text-rose-400">Injuries / Limitations:</strong> {wp.injuries}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {hasSchedule && onOpenWorkoutPlan && (
+                        <div className="pt-1">
+                          <Button
+                            size="sm"
+                            variant="primary"
+                            onClick={() => onOpenWorkoutPlan(wp, customer)}
+                            className="w-full justify-center gap-1.5"
+                          >
+                            <span>⚡</span>
+                            <span>{t('admin.btnOpenWorkoutPlan') || 'Open Full Workout Plan'}</span>
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="py-8 text-center text-slate-500 text-xs">
+                  {t('admin.noSavedPlans') || 'No saved plans'}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 4: TRAINER COACHING NOTES */}
           {activeTab === 'notes' && (
             <TrainerNotes
               customerId={customer.id}

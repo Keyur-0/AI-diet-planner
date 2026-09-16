@@ -5,7 +5,7 @@ const db = require('./db');
 const nutrition = require('./nutrition');
 const gemini = require('./gemini');
 const { validateCredentials, generateToken, requireAdminAuth } = require('./auth');
-const { dietGenerationLimiter } = require('./rateLimiter');
+const { dietGenerationLimiter, workoutGenerationLimiter } = require('./rateLimiter');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -353,7 +353,290 @@ app.post('/api/generate-diet', dietGenerationLimiter, async (req, res) => {
 });
 
 // ----------------------------------------------------
-// 3. Admin Lead Stats Summary (Stage 4C & 4D.1 - Protected)
+// 3B. Workout Routine Generation Endpoint
+// ----------------------------------------------------
+app.post('/api/generate-workout', workoutGenerationLimiter, async (req, res) => {
+  try {
+    const {
+      name,
+      age,
+      gender,
+      height,
+      weight,
+      fitnessGoal,
+      goal,
+      experienceLevel,
+      workoutLocation,
+      equipment,
+      daysPerWeek,
+      durationMins,
+      injuries,
+      preferredExercises,
+      phone,
+      email,
+      language
+    } = req.body;
+
+    const allowedLanguages = ['en', 'hi', 'gu'];
+    let selectedLanguage = 'en';
+    if (language && typeof language === 'string' && allowedLanguages.includes(language.toLowerCase().trim())) {
+      selectedLanguage = language.toLowerCase().trim();
+    }
+
+    const effectiveGoal = (fitnessGoal || goal || '').trim();
+
+    // Required fields check
+    const missingFields = [];
+    if (!name || !name.trim()) missingFields.push('name');
+    if (age === undefined || age === null || age === '') missingFields.push('age');
+    if (!gender || !gender.trim()) missingFields.push('gender');
+    if (height === undefined || height === null || height === '') missingFields.push('height');
+    if (weight === undefined || weight === null || weight === '') missingFields.push('weight');
+    if (!effectiveGoal) missingFields.push('fitnessGoal');
+    if (!experienceLevel || !experienceLevel.trim()) missingFields.push('experienceLevel');
+    if (!workoutLocation || !workoutLocation.trim()) missingFields.push('workoutLocation');
+    if (daysPerWeek === undefined || daysPerWeek === null || daysPerWeek === '') missingFields.push('daysPerWeek');
+    if (durationMins === undefined || durationMins === null || durationMins === '') missingFields.push('durationMins');
+    if (!phone || !phone.trim()) missingFields.push('phone');
+    if (!email || !email.trim()) missingFields.push('email');
+
+    if (missingFields.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Missing required fields: ${missingFields.join(', ')}`
+      });
+    }
+
+    // Boundary validations
+    const parsedAge = parseInt(age, 10);
+    const parsedHeight = parseFloat(height);
+    const parsedWeight = parseFloat(weight);
+    const parsedDaysPerWeek = parseInt(daysPerWeek, 10);
+    const parsedDurationMins = parseInt(durationMins, 10);
+
+    if (isNaN(parsedAge) || parsedAge < 12 || parsedAge > 100) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid age. Must be a number between 12 and 100.'
+      });
+    }
+
+    if (isNaN(parsedHeight) || parsedHeight < 80 || parsedHeight > 250) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid height. Must be between 80cm and 250cm.'
+      });
+    }
+
+    if (isNaN(parsedWeight) || parsedWeight < 25 || parsedWeight > 300) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid weight. Must be between 25kg and 300kg.'
+      });
+    }
+
+    if (isNaN(parsedDaysPerWeek) || parsedDaysPerWeek < 2 || parsedDaysPerWeek > 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid daysPerWeek. Must be between 2 and 6 days per week.'
+      });
+    }
+
+    if (isNaN(parsedDurationMins) || parsedDurationMins < 15 || parsedDurationMins > 180) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid durationMins. Must be between 15 and 180 minutes.'
+      });
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid email address format.'
+      });
+    }
+
+    if (phone.trim().length < 7) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid phone number format.'
+      });
+    }
+
+    let savedCustomerId = null;
+    let savedCustomerCreatedAt = new Date().toISOString();
+    let isDbConnected = false;
+
+    // Parameterized SQL insert into `customers` table
+    try {
+      const insertCustomerQuery = `
+        INSERT INTO customers (
+          name,
+          age,
+          gender,
+          height_cm,
+          weight_kg,
+          goal,
+          activity_level,
+          diet_preference,
+          favorite_foods,
+          allergies,
+          phone,
+          email,
+          language
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        RETURNING *;
+      `;
+
+      const customerValues = [
+        name.trim(),
+        parsedAge,
+        gender.trim(),
+        parsedHeight,
+        parsedWeight,
+        effectiveGoal,
+        'Moderate',
+        'Standard',
+        preferredExercises && preferredExercises.trim() ? preferredExercises.trim() : null,
+        injuries && injuries.trim() ? injuries.trim() : null,
+        phone.trim(),
+        email.trim(),
+        selectedLanguage
+      ];
+
+      const customerResult = await db.query(insertCustomerQuery, customerValues);
+      savedCustomerId = customerResult.rows[0].id;
+      savedCustomerCreatedAt = customerResult.rows[0].created_at;
+      isDbConnected = true;
+    } catch (dbErr) {
+      console.warn('⚠️ PostgreSQL offline: Proceeding with generated lead in memory.', dbErr.message);
+      savedCustomerId = Math.floor(100 + Math.random() * 900);
+    }
+
+    const formattedCustomer = {
+      id: savedCustomerId,
+      name: name.trim(),
+      age: parsedAge,
+      gender: gender.trim(),
+      height: parsedHeight,
+      weight: parsedWeight,
+      goal: effectiveGoal,
+      fitnessGoal: effectiveGoal,
+      experienceLevel: experienceLevel.trim(),
+      workoutLocation: workoutLocation.trim(),
+      equipment: equipment && equipment.trim() ? equipment.trim() : 'Full Gym Equipment',
+      daysPerWeek: parsedDaysPerWeek,
+      durationMins: parsedDurationMins,
+      injuries: injuries && injuries.trim() ? injuries.trim() : 'None',
+      preferredExercises: preferredExercises && preferredExercises.trim() ? preferredExercises.trim() : 'None specified',
+      phone: phone.trim(),
+      email: email.trim(),
+      language: selectedLanguage,
+      createdAt: savedCustomerCreatedAt
+    };
+
+    const workoutProfile = {
+      fitnessGoal: effectiveGoal,
+      experienceLevel: experienceLevel.trim(),
+      workoutLocation: workoutLocation.trim(),
+      equipment: equipment && equipment.trim() ? equipment.trim() : 'Full Gym Equipment',
+      daysPerWeek: parsedDaysPerWeek,
+      durationMins: parsedDurationMins,
+      injuries: injuries && injuries.trim() ? injuries.trim() : 'None',
+      preferredExercises: preferredExercises && preferredExercises.trim() ? preferredExercises.trim() : 'None specified'
+    };
+
+    // Call Gemini AI to Generate 7-Day Workout Routine in the selected language
+    let generatedPlan = null;
+    let aiError = null;
+
+    try {
+      generatedPlan = await gemini.generateWorkoutPlan(formattedCustomer, workoutProfile, selectedLanguage);
+    } catch (err) {
+      aiError = err.message;
+      console.warn('⚠️ Gemini AI Workout Generation Notice:', err.message);
+    }
+
+    // Parameterized SQL insert into `workout_plans` table if database is connected
+    let savedPlanId = null;
+    if (isDbConnected && savedCustomerId) {
+      try {
+        const planDataPayload = generatedPlan
+          ? generatedPlan
+          : {
+              status: 'template_fallback',
+              note: aiError || 'AI workout plan generation pending GEMINI_API_KEY configuration',
+              language: selectedLanguage,
+              summary: workoutProfile
+            };
+
+        const insertWorkoutQuery = `
+          INSERT INTO workout_plans (
+            customer_id,
+            fitness_goal,
+            experience_level,
+            workout_location,
+            equipment,
+            days_per_week,
+            duration_mins,
+            injuries,
+            preferred_exercises,
+            language,
+            plan_data
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+          RETURNING *;
+        `;
+
+        const workoutValues = [
+          savedCustomerId,
+          effectiveGoal,
+          experienceLevel.trim(),
+          workoutLocation.trim(),
+          workoutProfile.equipment,
+          parsedDaysPerWeek,
+          parsedDurationMins,
+          workoutProfile.injuries,
+          workoutProfile.preferredExercises,
+          selectedLanguage,
+          JSON.stringify(planDataPayload)
+        ];
+
+        const workoutResult = await db.query(insertWorkoutQuery, workoutValues);
+        savedPlanId = workoutResult.rows[0].id;
+      } catch (planDbErr) {
+        console.warn('⚠️ Could not save workout_plan to DB:', planDbErr.message);
+      }
+    }
+
+    return res.status(201).json({
+      success: true,
+      message: generatedPlan
+        ? `Customer profile and 7-day AI workout plan generated successfully in ${selectedLanguage}.`
+        : 'Customer profile saved and workout preferences recorded successfully.',
+      customer: formattedCustomer,
+      workout: workoutProfile,
+      plan: generatedPlan,
+      language: selectedLanguage,
+      aiStatus: generatedPlan ? 'generated' : 'pending_key',
+      aiNotice: aiError,
+      workoutPlan: {
+        id: savedPlanId || savedCustomerId,
+        language: selectedLanguage,
+        createdAt: savedCustomerCreatedAt
+      }
+    });
+  } catch (err) {
+    console.error('Server error generating workout:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Server error: Unable to process workout plan request.'
+    });
+  }
+});
+
+// ----------------------------------------------------
+// 4. Admin Lead Stats Summary (Stage 4C & 4D.1 - Protected)
 // ----------------------------------------------------
 app.get('/api/admin/stats', requireAdminAuth, async (req, res) => {
   try {
@@ -377,6 +660,9 @@ app.get('/api/admin/stats', requireAdminAuth, async (req, res) => {
     const totalPlansQuery = `SELECT COUNT(*)::int AS total_plans FROM diet_plans;`;
     const plansResult = await db.query(totalPlansQuery).catch(() => ({ rows: [{ total_plans: 0 }] }));
 
+    const totalWorkoutPlansQuery = `SELECT COUNT(*)::int AS total_workout_plans FROM workout_plans;`;
+    const workoutPlansResult = await db.query(totalWorkoutPlansQuery).catch(() => ({ rows: [{ total_workout_plans: 0 }] }));
+
     return res.status(200).json({
       success: true,
       stats: {
@@ -384,6 +670,8 @@ app.get('/api/admin/stats', requireAdminAuth, async (req, res) => {
         todayLeads: row.today_leads || 0,
         weekLeads: row.week_leads || 0,
         totalPlans: plansResult.rows[0]?.total_plans || 0,
+        totalDietPlans: plansResult.rows[0]?.total_plans || 0,
+        totalWorkoutPlans: workoutPlansResult.rows[0]?.total_workout_plans || 0,
         goals: {
           weightLoss: row.goal_weight_loss || 0,
           muscleGain: row.goal_muscle_gain || 0,
@@ -406,7 +694,7 @@ app.get('/api/admin/stats', requireAdminAuth, async (req, res) => {
 });
 
 // ----------------------------------------------------
-// 4. Retrieve Customers with Filtering, Search & Pagination (Stage 4C & 4D.1 - Protected)
+// 5. Retrieve Customers with Filtering, Search & Pagination (Stage 4C & 4D.1 - Protected)
 // ----------------------------------------------------
 app.get('/api/customers', requireAdminAuth, async (req, res) => {
   try {
@@ -474,15 +762,17 @@ app.get('/api/customers', requireAdminAuth, async (req, res) => {
     const parsedLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
     const offset = (parsedPage - 1) * parsedLimit;
 
-    // Data query with diet plan count and latest diet plan info
+    // Data query with diet plan count, workout plan count, and notes count
     const dataQuery = `
       SELECT 
         c.*,
         COUNT(DISTINCT dp.id)::int AS plan_count,
+        COUNT(DISTINCT wp.id)::int AS workout_plan_count,
         COUNT(DISTINCT tn.id)::int AS note_count,
         MAX(dp.created_at) AS latest_plan_created_at
       FROM customers c
       LEFT JOIN diet_plans dp ON c.id = dp.customer_id
+      LEFT JOIN workout_plans wp ON c.id = wp.customer_id
       LEFT JOIN trainer_notes tn ON c.id = tn.customer_id
       ${whereClause}
       GROUP BY c.id
@@ -511,6 +801,8 @@ app.get('/api/customers', requireAdminAuth, async (req, res) => {
       createdAt: row.created_at,
       planCount: row.plan_count || 0,
       plansCount: row.plan_count || 0,
+      dietPlanCount: row.plan_count || 0,
+      workoutPlanCount: row.workout_plan_count || 0,
       noteCount: row.note_count || 0,
       notesCount: row.note_count || 0,
       latestPlanDate: row.latest_plan_created_at,
@@ -540,7 +832,7 @@ app.get('/api/customers', requireAdminAuth, async (req, res) => {
 });
 
 // ----------------------------------------------------
-// 5. Retrieve Single Member Profile, Saved Plans & Notes (Stage 4C & 4D.1 - Protected)
+// 6. Retrieve Single Member Profile, Saved Plans & Notes (Stage 4C & 4D.1 - Protected)
 // ----------------------------------------------------
 app.get('/api/customers/:id', requireAdminAuth, async (req, res) => {
   try {
@@ -600,6 +892,28 @@ app.get('/api/customers/:id', requireAdminAuth, async (req, res) => {
       createdAt: p.created_at
     }));
 
+    // 2B. Fetch Associated Saved Workout Plans History (Ordered newest first)
+    const workoutPlansResult = await db.query(
+      'SELECT * FROM workout_plans WHERE customer_id = $1 ORDER BY created_at DESC;',
+      [customerId]
+    );
+
+    const workoutPlans = workoutPlansResult.rows.map((wp) => ({
+      id: wp.id,
+      customerId: wp.customer_id,
+      fitnessGoal: wp.fitness_goal,
+      experienceLevel: wp.experience_level,
+      workoutLocation: wp.workout_location,
+      equipment: wp.equipment,
+      daysPerWeek: wp.days_per_week,
+      durationMins: wp.duration_mins,
+      injuries: wp.injuries,
+      preferredExercises: wp.preferred_exercises,
+      language: wp.language || 'en',
+      planData: wp.plan_data,
+      createdAt: wp.created_at
+    }));
+
     // 3. Fetch Trainer Coaching Notes (Ordered newest first)
     const notesResult = await db.query(
       'SELECT * FROM trainer_notes WHERE customer_id = $1 ORDER BY created_at DESC;',
@@ -614,12 +928,14 @@ app.get('/api/customers/:id', requireAdminAuth, async (req, res) => {
     }));
 
     customer.dietPlans = dietPlans;
+    customer.workoutPlans = workoutPlans;
     customer.trainerNotes = notes;
 
     return res.status(200).json({
       success: true,
       customer,
       dietPlans,
+      workoutPlans,
       notes
     });
   } catch (err) {
@@ -632,7 +948,7 @@ app.get('/api/customers/:id', requireAdminAuth, async (req, res) => {
 });
 
 // ----------------------------------------------------
-// 6. Trainer Notes Endpoints (Stage 4C & 4D.1 - Protected)
+// 7. Trainer Notes Endpoints (Stage 4C & 4D.1 - Protected)
 // ----------------------------------------------------
 app.get('/api/customers/:id/notes', requireAdminAuth, async (req, res) => {
   try {
@@ -736,7 +1052,7 @@ app.delete('/api/customers/:id/notes/:noteId', requireAdminAuth, async (req, res
 });
 
 // ----------------------------------------------------
-// 7. Retrieve All Stored Diet Plans (Stage 3A & 3B & 3C & 4D.1 - Protected)
+// 8. Retrieve All Stored Diet Plans (Stage 3A & 3B & 3C & 4D.1 - Protected)
 // ----------------------------------------------------
 app.get('/api/diet-plans', requireAdminAuth, async (req, res) => {
   try {
@@ -776,6 +1092,50 @@ app.get('/api/diet-plans', requireAdminAuth, async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Database error: Unable to retrieve diet plans.'
+    });
+  }
+});
+
+// ----------------------------------------------------
+// 9. Retrieve All Stored Workout Plans (Stage 5 - Protected)
+// ----------------------------------------------------
+app.get('/api/workout-plans', requireAdminAuth, async (req, res) => {
+  try {
+    const queryText = `
+      SELECT wp.*, c.name, c.goal, c.email
+      FROM workout_plans wp
+      JOIN customers c ON wp.customer_id = c.id
+      ORDER BY wp.created_at DESC;
+    `;
+    const result = await db.query(queryText);
+
+    const workoutPlans = result.rows.map((row) => ({
+      id: row.id,
+      customerId: row.customer_id,
+      customerName: row.name,
+      fitnessGoal: row.fitness_goal,
+      experienceLevel: row.experience_level,
+      workoutLocation: row.workout_location,
+      equipment: row.equipment,
+      daysPerWeek: row.days_per_week,
+      durationMins: row.duration_mins,
+      injuries: row.injuries,
+      preferredExercises: row.preferred_exercises,
+      language: row.language || 'en',
+      planData: row.plan_data,
+      createdAt: row.created_at
+    }));
+
+    return res.status(200).json({
+      success: true,
+      count: workoutPlans.length,
+      workoutPlans
+    });
+  } catch (err) {
+    console.error('Error fetching workout plans:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Database error: Unable to retrieve workout plans.'
     });
   }
 });
