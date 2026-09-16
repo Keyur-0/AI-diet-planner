@@ -32,6 +32,7 @@
   nav,
   .screen-plan-view,
   .screen-grocery-view,
+  .screen-workout-view,
   #language-selector,
   button,
   .no-print {
@@ -41,7 +42,9 @@
   /* Display dedicated print container full-width */
   #diet-plan-print-view,
   #grocery-print-view,
-  .print-plan-container {
+  #workout-plan-print-view,
+  .print-plan-container,
+  .print-workout-container {
     display: block !important;
     width: 100% !important;
     margin: 0 !important;
@@ -49,8 +52,22 @@
     background: #ffffff !important;
   }
 
+  /* Reset any problematic heights, viewport constraints, or overflow in print */
+  .print-workout-container,
+  .print-workout-container *,
+  .print-plan-container,
+  .print-plan-container * {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    position: static !important;
+    box-shadow: none !important;
+  }
+
   /* Page break rules to prevent awkward breaks across cards or headers */
-  .avoid-break {
+  .avoid-break,
+  .exercise-print-card {
     break-inside: avoid !important;
     page-break-inside: avoid !important;
   }
@@ -59,6 +76,17 @@
     break-inside: avoid !important;
     page-break-inside: avoid !important;
     margin-bottom: 14pt !important;
+  }
+
+  .workout-day-print-card {
+    break-inside: auto !important;
+    page-break-inside: auto !important;
+    margin-bottom: 14pt !important;
+  }
+
+  .workout-day-header {
+    break-after: avoid !important;
+    page-break-after: avoid !important;
   }
 
   h1, h2, h3, h4, h5, h6 {
