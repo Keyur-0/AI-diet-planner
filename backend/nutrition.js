@@ -26,6 +26,35 @@ function calculateBMR(weight, height, age, gender) {
 }
 
 /**
+ * Normalizes activity level strings to canonical forms or null if invalid.
+ * Canonical mappings:
+ * - sedentary -> 'sedentary' (1.2)
+ * - light / lightly active / light active -> 'lightly active' (1.375)
+ * - moderate / moderately active / moderate active -> 'moderately active' (1.55)
+ * - very / very active / extra active / heavy -> 'very active' (1.725)
+ * @param {string} activityLevel
+ * @returns {string|null}
+ */
+function normalizeActivityLevel(activityLevel) {
+  if (!activityLevel || typeof activityLevel !== 'string') return null;
+  const clean = activityLevel.toLowerCase().trim();
+  const aliasMap = {
+    'sedentary': 'sedentary',
+    'light': 'lightly active',
+    'lightly active': 'lightly active',
+    'light active': 'lightly active',
+    'moderate': 'moderately active',
+    'moderately active': 'moderately active',
+    'moderate active': 'moderately active',
+    'very': 'very active',
+    'very active': 'very active',
+    'extra active': 'very active',
+    'heavy': 'very active'
+  };
+  return aliasMap[clean] || null;
+}
+
+/**
  * Total Daily Energy Expenditure (TDEE) based on activity multiplier
  * @param {number} bmr
  * @param {string} activityLevel
@@ -39,8 +68,12 @@ function calculateTDEE(bmr, activityLevel) {
     'very active': 1.725
   };
 
-  const levelKey = (activityLevel || '').toLowerCase().trim();
-  const multiplier = multipliers[levelKey] || 1.375;
+  const canonical = normalizeActivityLevel(activityLevel);
+  if (!canonical) {
+    return Math.round(bmr * 1.375);
+  }
+
+  const multiplier = multipliers[canonical] || 1.375;
   return Math.round(bmr * multiplier);
 }
 
@@ -165,5 +198,6 @@ module.exports = {
   calculateTDEE,
   calculateTargetCalories,
   calculateMacroSplit,
-  calculateNutritionTargets
+  calculateNutritionTargets,
+  normalizeActivityLevel
 };

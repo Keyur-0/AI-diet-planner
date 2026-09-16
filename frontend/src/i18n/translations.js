@@ -1136,19 +1136,40 @@ export const translations = {
   },
 };
 
+// Canonical namespace aliases to ensure both plan.* and dietPlan.* resolve consistently across all languages
+translations.en.dietPlan = translations.en.plan;
+translations.hi.dietPlan = translations.hi.plan;
+translations.gu.dietPlan = translations.gu.plan;
+
 /**
- * Retrieves a translated string given a dot-separated path (e.g. 'form.nameLabel')
+ * Retrieves a translated string given a dot-separated path (e.g. 'form.nameLabel' or 'plan.memberCardTitle')
+ * Automatically normalizes 'dietPlan.*' to 'plan.*' ensuring canonical consistency.
  * Falls back to English if the key or language is not found.
  */
 export function getTranslation(lang, keyPath, replacements = {}) {
   const currentLang = translations[lang] ? lang : 'en';
-  const keys = keyPath.split('.');
+  
+  // Normalize legacy or alternate dietPlan.* key paths to canonical plan.*
+  const normalizedKeyPath = keyPath.startsWith('dietPlan.')
+    ? keyPath.replace(/^dietPlan\./, 'plan.')
+    : keyPath;
+
+  const keys = normalizedKeyPath.split('.');
 
   let value = keys.reduce((acc, part) => (acc && acc[part] !== undefined ? acc[part] : null), translations[currentLang]);
 
   // Fallback to English if not found in current language
   if (value === null || value === undefined) {
     value = keys.reduce((acc, part) => (acc && acc[part] !== undefined ? acc[part] : null), translations.en);
+  }
+
+  // If still not found, check original keyPath directly
+  if (value === null || value === undefined) {
+    const origKeys = keyPath.split('.');
+    value = origKeys.reduce((acc, part) => (acc && acc[part] !== undefined ? acc[part] : null), translations[currentLang]);
+    if (value === null || value === undefined) {
+      value = origKeys.reduce((acc, part) => (acc && acc[part] !== undefined ? acc[part] : null), translations.en);
+    }
   }
 
   // If still not found, return keyPath as fallback

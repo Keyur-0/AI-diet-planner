@@ -544,13 +544,13 @@ app.get('/api/customers', requireAdminAuth, async (req, res) => {
 // ----------------------------------------------------
 app.get('/api/customers/:id', requireAdminAuth, async (req, res) => {
   try {
-    const customerId = parseInt(req.params.id, 10);
-    if (isNaN(customerId)) {
+    if (!req.params.id || !/^\d+$/.test(req.params.id)) {
       return res.status(400).json({
         success: false,
         message: 'Invalid customer ID.'
       });
     }
+    const customerId = parseInt(req.params.id, 10);
 
     // 1. Fetch Customer Record
     const customerResult = await db.query('SELECT * FROM customers WHERE id = $1;', [customerId]);
@@ -636,10 +636,10 @@ app.get('/api/customers/:id', requireAdminAuth, async (req, res) => {
 // ----------------------------------------------------
 app.get('/api/customers/:id/notes', requireAdminAuth, async (req, res) => {
   try {
-    const customerId = parseInt(req.params.id, 10);
-    if (isNaN(customerId)) {
+    if (!req.params.id || !/^\d+$/.test(req.params.id)) {
       return res.status(400).json({ success: false, message: 'Invalid customer ID.' });
     }
+    const customerId = parseInt(req.params.id, 10);
 
     const result = await db.query(
       'SELECT * FROM trainer_notes WHERE customer_id = $1 ORDER BY created_at DESC;',
@@ -662,10 +662,10 @@ app.get('/api/customers/:id/notes', requireAdminAuth, async (req, res) => {
 
 app.post('/api/customers/:id/notes', requireAdminAuth, async (req, res) => {
   try {
-    const customerId = parseInt(req.params.id, 10);
-    if (isNaN(customerId)) {
+    if (!req.params.id || !/^\d+$/.test(req.params.id)) {
       return res.status(400).json({ success: false, message: 'Invalid customer ID.' });
     }
+    const customerId = parseInt(req.params.id, 10);
 
     const { note } = req.body;
     if (!note || typeof note !== 'string' || !note.trim()) {
@@ -708,12 +708,11 @@ app.post('/api/customers/:id/notes', requireAdminAuth, async (req, res) => {
 
 app.delete('/api/customers/:id/notes/:noteId', requireAdminAuth, async (req, res) => {
   try {
-    const customerId = parseInt(req.params.id, 10);
-    const noteId = parseInt(req.params.noteId, 10);
-
-    if (isNaN(customerId) || isNaN(noteId)) {
+    if (!req.params.id || !/^\d+$/.test(req.params.id) || !req.params.noteId || !/^\d+$/.test(req.params.noteId)) {
       return res.status(400).json({ success: false, message: 'Invalid IDs provided.' });
     }
+    const customerId = parseInt(req.params.id, 10);
+    const noteId = parseInt(req.params.noteId, 10);
 
     const deleteQuery = `
       DELETE FROM trainer_notes

@@ -18,6 +18,7 @@ const ALLERGEN_DICTIONARY = {
 
 /**
  * Validates the generated AI meal plan structure, nutrient numbers, allergies, and diet preferences across English, Hindi, and Gujarati.
+ * Calculates actual sums of meal calories/macros from meal objects and verifies they meet authoritative targets within tolerance.
  * @param {object} plan - Parsed JSON plan
  * @param {object} customer - Customer intake profile
  * @param {object} nutritionTargets - Authoritative calculated nutrition targets
@@ -38,7 +39,12 @@ function validateDietPlan(plan, customer, nutritionTargets) {
     return { valid: false, error: `AI response must contain exactly 7 days, but got ${plan.days ? plan.days.length : 0}.` };
   }
 
-  // 3. Verify each day and meal structure
+  // 3. Verify each day and meal structure + aggregate meal totals
+  const targetCalories = nutritionTargets ? Number(nutritionTargets.targetCalories) || 2000 : 2000;
+  const targetProtein = nutritionTargets ? Number(nutritionTargets.proteinG) || 150 : 150;
+  const targetCarbs = nutritionTargets ? Number(nutritionTargets.carbsG) || 200 : 200;
+  const targetFat = nutritionTargets ? Number(nutritionTargets.fatG) || 60 : 60;
+
   for (let d = 0; d < plan.days.length; d++) {
     const day = plan.days[d];
     if (!day || typeof day !== 'object') {
@@ -48,6 +54,11 @@ function validateDietPlan(plan, customer, nutritionTargets) {
     if (!Array.isArray(day.meals) || day.meals.length < 5) {
       return { valid: false, error: `Day ${d + 1} must contain at least 5 structured meals.` };
     }
+
+    let daySumCalories = 0;
+    let daySumProtein = 0;
+    let daySumCarbs = 0;
+    let daySumFat = 0;
 
     for (let m = 0; m < day.meals.length; m++) {
       const meal = day.meals[m];
@@ -71,12 +82,69 @@ function validateDietPlan(plan, customer, nutritionTargets) {
       if (!Array.isArray(meal.foods)) {
         meal.foods = [];
       }
+
+      daySumCalories += Number(meal.calories);
+      daySumProtein += Number(meal.protein_g);
+      daySumCarbs += Number(meal.carbs_g);
+      daySumFat += Number(meal.fat_g);
+    }
+
+    daySumCalories = Math.round(daySumCalories);
+    daySumProtein = Math.round(daySumProtein * 10) / 10;
+    daySumCarbs = Math.round(daySumCarbs * 10) / 10;
+    daySumFat = Math.round(daySumFat * 10) / 10;
+
+    // Overwrite/derive actual daily_totals from real meal summation
+    day.daily_totals = {
+      calories: daySumCalories,
+      protein_g: daySumProtein,
+      carbs_g: daySumCarbs,
+      fat_g: daySumFat
+    };
+
+    // Tolerance validation against authoritative nutrition targets
+    if (nutritionTargets) {
+      // Calories: ±10%
+      const calDiffPct = Math.abs(daySumCalories - targetCalories) / targetCalories;
+      if (calDiffPct > 0.10) {
+        return {
+          valid: false,
+          error: `Day ${d + 1} total meal calories (${daySumCalories} kcal) deviates from target (${targetCalories} kcal) by ${(calDiffPct * 100).toFixed(1)}% (allowed: ±10%).`
+        };
+      }
+
+      // Protein: ±10%
+      const protDiffPct = Math.abs(daySumProtein - targetProtein) / targetProtein;
+      if (protDiffPct > 0.10) {
+        return {
+          valid: false,
+          error: `Day ${d + 1} total protein (${daySumProtein}g) deviates from target (${targetProtein}g) by ${(protDiffPct * 100).toFixed(1)}% (allowed: ±10%).`
+        };
+      }
+
+      // Fat: ±15%
+      const fatDiffPct = Math.abs(daySumFat - targetFat) / targetFat;
+      if (fatDiffPct > 0.15) {
+        return {
+          valid: false,
+          error: `Day ${d + 1} total fat (${daySumFat}g) deviates from target (${targetFat}g) by ${(fatDiffPct * 100).toFixed(1)}% (allowed: ±15%).`
+        };
+      }
+
+      // Carbs: ±15%
+      const carbsDiffPct = Math.abs(daySumCarbs - targetCarbs) / targetCarbs;
+      if (carbsDiffPct > 0.15) {
+        return {
+          valid: false,
+          error: `Day ${d + 1} total carbs (${daySumCarbs}g) deviates from target (${targetCarbs}g) by ${(carbsDiffPct * 100).toFixed(1)}% (allowed: ±15%).`
+        };
+      }
     }
   }
 
   const fullPlanText = JSON.stringify(plan).toLowerCase();
 
-  // 4. Multilingual Allergy Safety Check
+  // 4. Multilingual Allergy Safety Check (Strictly Blocking)
   const allergiesStr = (customer.allergies || '').toLowerCase().trim();
   if (allergiesStr && allergiesStr !== 'none' && allergiesStr !== 'none specified' && allergiesStr !== 'કોઈ નહીં' && allergiesStr !== 'कोई नहीं') {
     const allergenRawList = allergiesStr
@@ -96,8 +164,14 @@ function validateDietPlan(plan, customer, nutritionTargets) {
     }
 
     for (const term of searchTerms) {
-      if (term.length > 2 && fullPlanText.includes(term)) {
-        console.warn(`⚠️ Warning: Potential allergen keyword "${term}" detected in generated meal plan.`);
+      if (term.length >= 3) {
+        const regex = new RegExp(`(\\b|\\s|^|["',])${term}(\\b|\\s|$|["',])`, 'i');
+        if (regex.test(fullPlanText) || fullPlanText.includes(term)) {
+          return {
+            valid: false,
+            error: `Allergen safety violation: Found allergen keyword "${term}" matching customer allergy: "${customer.allergies}".`
+          };
+        }
       }
     }
   }
@@ -185,6 +259,7 @@ function validateDietPlan(plan, customer, nutritionTargets) {
 
 /**
  * Calls Google Gemini AI to generate a structured 7-day meal schedule in the selected language.
+ * Implements bounded retries with validation feedback to guarantee dietary safety and macro accuracy.
  * @param {object} customer - Customer intake profile
  * @param {object} nutritionTargets - Calculated BMR, TDEE, calories, and macros
  * @param {string} [language='en'] - 'en' | 'hi' | 'gu'
@@ -219,8 +294,18 @@ async function generateDietPlan(customer, nutritionTargets, language = 'en') {
     languageFoodHint = 'Natural Gujarati in Gujarati script (e.g. "દાળ", "પનીર ભુર્જી", "રોટલી")';
   }
 
-  // System and context instructions
-  const prompt = `
+  const breakfastCal = Math.round(nutritionTargets.targetCalories * 0.20);
+  const morningSnackCal = Math.round(nutritionTargets.targetCalories * 0.10);
+  const lunchCal = Math.round(nutritionTargets.targetCalories * 0.32);
+  const eveningSnackCal = Math.round(nutritionTargets.targetCalories * 0.10);
+  const dinnerCal = Math.round(nutritionTargets.targetCalories * 0.28);
+
+  const breakfastProt = Math.round(nutritionTargets.proteinG * 0.22);
+  const lunchProt = Math.round(nutritionTargets.proteinG * 0.34);
+  const dinnerProt = Math.round(nutritionTargets.proteinG * 0.24);
+
+  // Base prompt
+  const basePrompt = `
 You are an expert fitness nutritionist creating a customized 7-day meal plan for a gym member.
 
 ${languageInstruction}
@@ -248,8 +333,15 @@ The backend calculation engine has already determined the authoritative target n
 - Daily Carbohydrate Target: ${nutritionTargets.carbsG} grams (${nutritionTargets.carbsPct}% of calories)
 - Daily Healthy Fat Target: ${nutritionTargets.fatG} grams (${nutritionTargets.fatPct}% of calories)
 
-The supplied nutrition targets are authoritative. Build the meal plan around these targets. Do not change the targets.
-Distribute the daily totals across 5 daily meals so each day approximately totals ~${nutritionTargets.targetCalories} kcal (±5-10% tolerance).
+### MEAL-BY-MEAL CALORIE & PORTION GUIDELINES
+To ensure the sum of meal calories closely matches ~${nutritionTargets.targetCalories} kcal (within ±5% to ±10% tolerance), distribute the meals approximately as follows:
+- Breakfast (~20%): ~${breakfastCal} kcal, ~${breakfastProt}g protein
+- Morning Snack (~10%): ~${morningSnackCal} kcal
+- Lunch (~32%): ~${lunchCal} kcal, ~${lunchProt}g protein
+- Evening Snack (~10%): ~${eveningSnackCal} kcal
+- Dinner (~28%): ~${dinnerCal} kcal, ~${dinnerProt}g protein
+
+CRITICAL: For high-calorie muscle gain targets (~3000+ kcal), use realistic substantial portion sizes (e.g. 200g-250g protein source, 2-3 cups cooked rice/oats, whole eggs, nuts, avocados, olive oil) so that each day's summed meal calories reach ~${nutritionTargets.targetCalories} kcal.
 
 ### MEMBER PROFILE
 - Name: ${customer.name}
@@ -286,46 +378,46 @@ You must return ONLY a valid JSON object matching this exact schema:
           "foods": [
             { "name": "Ingredient Name in target language", "quantity": "Portion (e.g. 100g or 2 slices)" }
           ],
-          "calories": 600,
-          "protein_g": 35,
-          "carbs_g": 70,
-          "fat_g": 18
+          "calories": ${breakfastCal},
+          "protein_g": ${breakfastProt},
+          "carbs_g": ${Math.round(breakfastCal * 0.5 / 4)},
+          "fat_g": ${Math.round(breakfastCal * 0.25 / 9)}
         },
         {
           "type": "morning_snack",
           "name": "Snack Title in target language",
           "foods": [{ "name": "...", "quantity": "..." }],
-          "calories": 300,
-          "protein_g": 15,
-          "carbs_g": 40,
-          "fat_g": 10
+          "calories": ${morningSnackCal},
+          "protein_g": 10,
+          "carbs_g": 30,
+          "fat_g": 8
         },
         {
           "type": "lunch",
           "name": "Lunch Title in target language",
           "foods": [{ "name": "...", "quantity": "..." }],
-          "calories": 850,
-          "protein_g": 50,
-          "carbs_g": 110,
-          "fat_g": 24
+          "calories": ${lunchCal},
+          "protein_g": ${lunchProt},
+          "carbs_g": ${Math.round(lunchCal * 0.45 / 4)},
+          "fat_g": ${Math.round(lunchCal * 0.25 / 9)}
         },
         {
           "type": "evening_snack",
           "name": "Snack Title in target language",
           "foods": [{ "name": "...", "quantity": "..." }],
-          "calories": 350,
-          "protein_g": 20,
-          "carbs_g": 45,
+          "calories": ${eveningSnackCal},
+          "protein_g": 15,
+          "carbs_g": 35,
           "fat_g": 10
         },
         {
           "type": "dinner",
           "name": "Dinner Title in target language",
           "foods": [{ "name": "...", "quantity": "..." }],
-          "calories": 930,
-          "protein_g": 45,
-          "carbs_g": 138,
-          "fat_g": 22
+          "calories": ${dinnerCal},
+          "protein_g": ${dinnerProt},
+          "carbs_g": ${Math.round(dinnerCal * 0.45 / 4)},
+          "fat_g": ${Math.round(dinnerCal * 0.25 / 9)}
         }
       ],
       "daily_totals": {
@@ -346,58 +438,71 @@ Include all 7 days (Day 1 to Day 7) with creative variety across the week.
     'gemini-3.7-flash',
     'gemini-3.5-flash',
   ];
-  let lastError = null;
-  let responseText = null;
 
-  for (const model of modelsToTry) {
-    // Retry up to 2 attempts per model on transient errors (like 503 high demand)
-    for (let attempt = 1; attempt <= 2; attempt++) {
-      try {
-        const response = await ai.models.generateContent({
-          model,
-          contents: prompt,
-          config: {
-            responseMimeType: 'application/json',
-            temperature: 0.3
+  const MAX_ATTEMPTS = 3;
+  let lastValidationError = null;
+  let lastApiError = null;
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    let currentPrompt = basePrompt;
+    if (lastValidationError) {
+      currentPrompt += `\n\n### CRITICAL CORRECTION REQUIRED (Attempt ${attempt}/${MAX_ATTEMPTS}):\nYour previous output failed validation with error: "${lastValidationError}".\nYou MUST correct this error immediately. Ensure strict dietary compliance, zero allergens, and that the sum of the 5 meal calories for every day accurately reaches ~${nutritionTargets.targetCalories} kcal (±5-10%).`;
+    }
+
+    let responseText = null;
+
+    for (const model of modelsToTry) {
+      for (let modelAttempt = 1; modelAttempt <= 2; modelAttempt++) {
+        try {
+          const response = await ai.models.generateContent({
+            model,
+            contents: currentPrompt,
+            config: {
+              responseMimeType: 'application/json',
+              temperature: 0.2 + (attempt * 0.05)
+            }
+          });
+          responseText = response.text ? response.text.trim() : '';
+          if (responseText) {
+            break;
           }
-        });
-        responseText = response.text ? response.text.trim() : '';
-        if (responseText) {
-          break;
-        }
-      } catch (err) {
-        lastError = err;
-        console.warn(`Model ${model} (attempt ${attempt}) unavailable (${err.message}).`);
-        if (attempt < 2 && err.message?.includes('503')) {
-          await new Promise((r) => setTimeout(r, 1000));
+        } catch (err) {
+          lastApiError = err;
+          console.warn(`Model ${model} (attempt ${modelAttempt}) notice (${err.message}).`);
+          if (modelAttempt < 2 && err.message?.includes('503')) {
+            await new Promise((r) => setTimeout(r, 1000));
+          }
         }
       }
+      if (responseText) {
+        break;
+      }
     }
-    if (responseText) {
-      break;
+
+    if (!responseText) {
+      throw lastApiError || new Error('All Gemini model candidates failed to respond.');
     }
+
+    let parsedPlan;
+    try {
+      parsedPlan = JSON.parse(responseText);
+    } catch (err) {
+      console.error('Gemini JSON Parse Error on attempt', attempt, ':', err.message);
+      lastValidationError = 'Failed to parse Gemini response as JSON.';
+      continue;
+    }
+
+    // Validate the AI output
+    const validation = validateDietPlan(parsedPlan, customer, nutritionTargets);
+    if (validation.valid) {
+      return parsedPlan;
+    }
+
+    lastValidationError = validation.error;
+    console.warn(`⚠️ Generation attempt ${attempt}/${MAX_ATTEMPTS} rejected: ${validation.error}. Retrying with feedback...`);
   }
 
-  if (!responseText) {
-    throw lastError || new Error('All Gemini model candidates failed to respond.');
-  }
-
-  let parsedPlan;
-  try {
-    parsedPlan = JSON.parse(responseText);
-  } catch (err) {
-    console.error('Gemini JSON Parse Error:', err, responseText);
-    throw new Error('Failed to parse Gemini response as JSON.');
-  }
-
-  // Validate the AI output
-  const validation = validateDietPlan(parsedPlan, customer, nutritionTargets);
-  if (!validation.valid) {
-    console.error('Gemini Plan Validation Error:', validation.error);
-    throw new Error(`AI Meal Plan Validation Failed: ${validation.error}`);
-  }
-
-  return parsedPlan;
+  throw new Error(`AI Meal Plan Generation failed validation after ${MAX_ATTEMPTS} attempts: ${lastValidationError}`);
 }
 
 module.exports = {
